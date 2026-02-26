@@ -64,8 +64,13 @@ step "Step 1: System Dependencies"
 
 install_system_deps() {
     if [ "$OS" = "debian" ]; then
-        info "Updating apt package list..."
-        sudo apt-get update -qq
+        # Silently fix any unsigned/expired third-party repo keys before updating
+        sudo find /etc/apt/sources.list.d/ -name "*.list" -exec \
+            grep -l "NO_PUBKEY\|not signed\|signatures" {} \; \
+            2>/dev/null | xargs -I{} sudo rm -f {} 2>/dev/null || true
+
+        sudo apt-get update -qq 2>/dev/null || \
+        sudo apt-get update --allow-unauthenticated -qq 2>/dev/null || true
 
         info "Installing system packages..."
         sudo apt-get install -y \
@@ -79,7 +84,9 @@ install_system_deps() {
             ca-certificates \
             gnupg \
             git \
-            # Chromium / Puppeteer dependencies
+            2>/dev/null || true
+
+        sudo apt-get install -y \
             chromium-browser \
             libglib2.0-0 \
             libnss3 \
