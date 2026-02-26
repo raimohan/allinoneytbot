@@ -260,7 +260,34 @@ for (const binPath of POSSIBLE_BINARIES) {
     }
 }
 
-// Ensure download folder exists
+// --- IMPERSONATION SUPPORT CHECK ---
+// curl_cffi may not be installed — probe once at startup, never crash on it
+let canImpersonate = false;
+(function probeImpersonate() {
+    try {
+        const { spawnSync } = require('child_process');
+        const result = spawnSync(YT_DLP_BINARY, ['--list-impersonate-targets'], {
+            timeout: 5000,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'], // capture both stdout and stderr
+        });
+        // spawnSync NEVER throws — it returns { status, stdout, stderr }
+        const combined = (result.stdout || '') + (result.stderr || '');
+        canImpersonate = result.status === 0 && combined.toLowerCase().includes('chrome');
+    } catch (_) {
+        canImpersonate = false;
+    }
+    console.log(canImpersonate
+        ? '✅ yt-dlp impersonation (chrome) available.'
+        : '⚠️  yt-dlp: curl_cffi not installed — running without --impersonate (downloads still work).'
+    );
+})();
+
+// Helper: returns impersonate args only if supported
+function impersonateArgs() {
+    return canImpersonate ? ['--impersonate', 'chrome'] : [];
+}
+
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
 app.use(express.json());
@@ -302,8 +329,7 @@ function getCommonArgs(url) {
         '--no-check-certificates',
         '--no-warnings',
         '--no-playlist',
-        // CRITICAL: Browser Impersonation to avoid throttling and 403 errors (Twitter, YouTube, etc.)
-        '--impersonate', 'chrome'
+        ...impersonateArgs(),
     ];
 
     // Platform-specific referer
@@ -351,7 +377,7 @@ app.post('/api/music/search', (req, res) => {
         '--no-check-certificates',
         '--no-warnings',
         '--flat-playlist',
-        '--impersonate', 'chrome',
+        ...impersonateArgs(),
         '-J',
         searchQuery
     ];
@@ -434,7 +460,7 @@ app.get('/api/music/download', async (req, res) => {
     const args = [
         '--no-check-certificates',
         '--no-warnings',
-        '--impersonate', 'chrome',
+        ...impersonateArgs(),
         '-x', // Extract audio
         '--audio-format', 'mp3',
         '--audio-quality', '0', // Best quality
@@ -505,7 +531,7 @@ app.post('/api/video/info', (req, res) => {
     const args = [
         '--no-check-certificates',
         '--no-warnings',
-        '--impersonate', 'chrome',
+        ...impersonateArgs(),
         '-J',
         url
     ];
@@ -569,7 +595,7 @@ app.post('/api/video/playlist', (req, res) => {
         '--no-check-certificates',
         '--no-warnings',
         '--flat-playlist',
-        '--impersonate', 'chrome',
+        ...impersonateArgs(),
         '-J',
         url
     ];
@@ -784,7 +810,7 @@ app.get('/api/download', async (req, res) => {
     // Fetch Title
     let videoTitle = 'video';
     try {
-        const titleArgs = ['--get-title', '--no-warnings', '--impersonate', 'chrome', url];
+        const titleArgs = ['--get-title', '--no-warnings', ...impersonateArgs(), url];
         const cookieFile = getCookieFile(url);
         if (cookieFile) titleArgs.push('--cookies', cookieFile);
 
@@ -937,7 +963,7 @@ app.get('/api/clip', async (req, res) => {
     // Only fetch title synchronously for non-conversion (fast path)
     if (!needsConversion) {
         try {
-            const titleArgs = ['--get-title', '--no-warnings', '--impersonate', 'chrome', url];
+            const titleArgs = ['--get-title', '--no-warnings', ...impersonateArgs(), url];
             const cookieFile = getCookieFile(url);
             if (cookieFile) titleArgs.push('--cookies', cookieFile);
             const titleChild = spawn(YT_DLP_BINARY, titleArgs);
@@ -1628,7 +1654,7 @@ ${transcriptText}`;
         const aiData = await callOpenRouterAPI(
             'https://openrouter.ai/api/v1/chat/completions',
             {
-                model: 'google/gemini-2.0-flash-exp:free',
+                model: 'openrouter/free',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
@@ -1876,7 +1902,7 @@ Return ONLY the JSON response with startTime (in seconds), endTime (in seconds, 
         const aiData = await callOpenRouterAPI(
             'https://openrouter.ai/api/v1/chat/completions',
             {
-                model: 'openrouter/auto',
+                model: 'openrouter/free',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
@@ -2086,7 +2112,7 @@ GUIDELINES:
         const data = await callOpenRouterAPI(
             'https://openrouter.ai/api/v1/chat/completions',
             {
-                model: 'google/gemini-2.0-flash-exp:free',
+                model: 'openrouter/free',
                 messages: apiMessages,
                 max_tokens: 1500,
                 temperature: 0.7
