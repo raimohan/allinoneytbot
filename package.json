@@ -1,0 +1,33 @@
+{
+  "name": "raixbot",
+  "version": "2.0.0",
+  "description": "RaiXbot — Multi-platform media bot (Telegram + Discord + WhatsApp)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "backend": "node backend.js",
+    "telegram": "node telegram/bot.js",
+    "discord": "node discord/bot.js",
+    "whatsapp": "node whatsapp/bot.js",
+    "install:all": "npm install && cd telegram && npm install && cd ../discord && npm install && cd ../whatsapp && npm install"
+  },
+  "keywords": [
+    "bot",
+    "telegram",
+    "discord",
+    "whatsapp",
+    "downloader"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
