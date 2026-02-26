@@ -152,24 +152,46 @@ ok "yt-dlp setup complete."
 # ============================================================
 step "Step 5: WhatsApp / Puppeteer Setup"
 
-warn "WhatsApp bot requires Chromium via Puppeteer."
-warn "In Termux, we use a special lightweight approach."
+info "WhatsApp bot requires Chromium to run headless browser sessions."
+info "Attempting to install Chromium for Termux..."
 echo ""
+
 # Initialize with safe default
 SKIP_CHROMIUM=false
 CHROMIUM_BIN=""
 
-pkg install -y chromium 2>/dev/null || true
+# Try multiple package names (differs across Termux versions)
+pkg install -y chromium 2>/dev/null || \
+    pkg install -y chromium-browser 2>/dev/null || \
+    apt install -y chromium 2>/dev/null || true
 
-if command -v chromium &>/dev/null; then
-    CHROMIUM_BIN=$(command -v chromium)
-    ok "System Chromium found at: $CHROMIUM_BIN"
+# Check multiple possible binary locations
+CHROMIUM_PATHS=(
+    "/data/data/com.termux/files/usr/bin/chromium-browser"
+    "/data/data/com.termux/files/usr/bin/chromium"
+    "$(command -v chromium-browser 2>/dev/null || true)"
+    "$(command -v chromium 2>/dev/null || true)"
+)
+
+for CPATH in "${CHROMIUM_PATHS[@]}"; do
+    if [ -n "$CPATH" ] && [ -x "$CPATH" ]; then
+        CHROMIUM_BIN="$CPATH"
+        break
+    fi
+done
+
+if [ -n "$CHROMIUM_BIN" ]; then
+    ok "Chromium found at: $CHROMIUM_BIN"
     export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
     export PUPPETEER_EXECUTABLE_PATH="$CHROMIUM_BIN"
     SKIP_CHROMIUM=true
 else
-    warn "System Chromium not found. WhatsApp bot may not work on this device."
-    warn "You can still use Telegram and Discord bots — set START_BOTS=backend,telegram,discord in .env"
+    warn "Chromium could not be installed."
+    warn "WhatsApp bot needs Chromium. You can try installing it manually later:"
+    warn "   pkg install chromium"
+    warn ""
+    warn "For now, Telegram and Discord bots will still work fine."
+    warn "Edit .env → START_BOTS=backend,telegram,discord"
     SKIP_CHROMIUM=false
 fi
 
