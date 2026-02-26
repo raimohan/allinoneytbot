@@ -143,14 +143,12 @@ step "Step 2: Node.js (v20 LTS)"
 install_node() {
     if command -v node &>/dev/null; then
         NODE_VER=$(node --version)
-        ok "Node.js already installed: $NODE_VER"
-        # Check if version is >= 18
         MAJOR=$(echo "$NODE_VER" | sed 's/v//' | cut -d. -f1)
-        if [ "$MAJOR" -lt 18 ]; then
-            warn "Node.js $NODE_VER is too old. Installing v20..."
-        else
-            return
+        if [ "$MAJOR" -ge 18 ]; then
+            ok "Node.js $NODE_VER already installed."
+            return 0
         fi
+        warn "Node.js $NODE_VER is too old (need 18+). Upgrading..."
     fi
 
     if [ "$OS" = "debian" ]; then
@@ -163,8 +161,8 @@ install_node() {
     elif [ "$OS" = "macos" ]; then
         brew install node@20 || brew upgrade node
     else
-        warn "Please install Node.js 20+ manually from https://nodejs.org"
-        return
+        warn "Please install Node.js 20+ manually: https://nodejs.org"
+        return 0
     fi
 
     ok "Node.js $(node --version) installed."
