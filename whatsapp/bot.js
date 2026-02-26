@@ -21,6 +21,40 @@ const PLATFORM = 'whatsapp';
 const MAX_SIZE_MB = 100; // WhatsApp limit
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
+// ── Auto-detect Chromium for Termux / custom installs ─────────
+function findChromiumPath() {
+    // 1. Check env var first (set by termux.sh or .env)
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        const p = process.env.PUPPETEER_EXECUTABLE_PATH;
+        if (fs.existsSync(p)) return p;
+    }
+
+    // 2. Scan common paths (Termux, Linux, macOS, snap)
+    const candidates = [
+        '/data/data/com.termux/files/usr/bin/chromium-browser',  // Termux
+        '/data/data/com.termux/files/usr/bin/chromium',          // Termux alt
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
+        '/snap/bin/chromium',
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    ];
+
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+
+    return null; // Let puppeteer use its bundled Chromium
+}
+
+const CHROMIUM_PATH = findChromiumPath();
+if (CHROMIUM_PATH) {
+    console.log(`[WA] Using Chromium at: ${CHROMIUM_PATH}`);
+} else {
+    console.log('[WA] No system Chromium found — using bundled Puppeteer Chromium.');
+}
+
 // ── WhatsApp Client with persistent session ───────────────────
 const client = new Client({
     authStrategy: new LocalAuth({
@@ -29,6 +63,7 @@ const client = new Client({
     }),
     puppeteer: {
         headless: true,
+        ...(CHROMIUM_PATH ? { executablePath: CHROMIUM_PATH } : {}),
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -37,9 +72,17 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--disable-gpu',
+            '--single-process',           // Required for Termux (no fork support)
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-translate',
+            '--disable-sync',
+            '--metrics-recording-only',
+            '--no-default-browser-check',
         ],
     },
 });
+
 
 // ── State Store ───────────────────────────────────────────────
 const userState = new Map();
@@ -607,12 +650,8 @@ async function handleClip(message, chatId, userId, url, start, end, ratio) {
         if (clipResult.jobId) {
             fileData = await api.waitAndDownloadClip(clipResult.jobId, 300000);
         } else {
-            const params = new URLSearchParams({ url, start, end, quality, ratio });
-            const res = await fetch(`${api.BACKEND_URL}/api/clip?${params}`);
-            const buffer = Buffer.from(await res.arrayBuffer());
-            const cd = res.headers.get('content-disposition') || '';
-            const nm = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i);
-            fileData = { buffer, filename: nm ? decodeURIComponent(nm[1]) : `clip_${Date.now()}.mp4`, size: buffer.length };
+            // Direct download returned from API
+            fileData = clipResult;
         }
 
         await procMsg.delete().catch(() => { });
