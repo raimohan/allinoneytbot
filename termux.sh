@@ -5,6 +5,9 @@
 #  Author: raimohan | github.com/raimohan/allinoneytbot
 # ============================================================
 
+# Exit on unset variables; do NOT use set -e (pkg errors are non-fatal in Termux)
+set -u 2>/dev/null || true
+
 # ── Colors ────────────────────────────────────────────────────
 CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
@@ -59,7 +62,8 @@ fi
 # ============================================================
 step "Step 1: Update Termux Packages"
 info "Updating package list..."
-pkg update -y 2>/dev/null || apt update -y
+pkg update -y 2>/dev/null || apt-get update -y 2>/dev/null || true
+pkg upgrade -y 2>/dev/null || true
 ok "Packages updated."
 
 # ============================================================
@@ -77,11 +81,19 @@ pkg install -y \
     wget \
     git \
     openssl \
-    2>/dev/null
+    2>/dev/null || true
 
-ok "Node.js: $(node --version)"
-ok "Python: $(python --version)"
-ok "FFmpeg: $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
+if command -v node &>/dev/null; then
+    ok "Node.js: $(node --version)"
+else
+    warn "Node.js install may have failed. Try: pkg install nodejs"
+fi
+if command -v python &>/dev/null; then
+    ok "Python: $(python --version 2>&1)"
+fi
+if command -v ffmpeg &>/dev/null; then
+    ok "FFmpeg ready."
+fi
 
 # ============================================================
 # STEP 3 — Storage Permission
@@ -126,11 +138,11 @@ step "Step 5: WhatsApp / Puppeteer Setup"
 warn "WhatsApp bot requires Chromium via Puppeteer."
 warn "In Termux, we use a special lightweight approach."
 echo ""
-info "Installing required native libraries..."
+# Initialize with safe default
+SKIP_CHROMIUM=false
+CHROMIUM_BIN=""
 
-pkg install -y \
-    chromium \
-    2>/dev/null || true
+pkg install -y chromium 2>/dev/null || true
 
 if command -v chromium &>/dev/null; then
     CHROMIUM_BIN=$(command -v chromium)
@@ -139,16 +151,11 @@ if command -v chromium &>/dev/null; then
     export PUPPETEER_EXECUTABLE_PATH="$CHROMIUM_BIN"
     SKIP_CHROMIUM=true
 else
-    warn "System Chromium not found in Termux."
-    warn "Puppeteer will attempt to use a bundled Chromium."
-    warn "This may fail on ARM devices. Consider using Telegram/Discord bots only."
+    warn "System Chromium not found. WhatsApp bot may not work on this device."
+    warn "You can still use Telegram and Discord bots — set START_BOTS=backend,telegram,discord in .env"
     SKIP_CHROMIUM=false
 fi
 
-echo ""
-info "📌 TIP: If WhatsApp bot fails on Termux, you can:"
-info "   1. Run only Telegram/Discord bots (set START_BOTS=backend,telegram,discord in .env)"
-info "   2. Use proot-distro with Ubuntu for full Chromium support"
 
 # ============================================================
 # STEP 6 — npm Dependencies
