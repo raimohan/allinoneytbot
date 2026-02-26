@@ -72,8 +72,9 @@ ok "Packages updated."
 step "Step 2: Core System Packages"
 
 info "Installing essential packages..."
+# nodejs-lts installs Node 20 (LTS). Do NOT use plain 'nodejs' — it may install v22/v25 which can break modules
 pkg install -y \
-    nodejs \
+    nodejs-lts \
     python \
     python-pip \
     ffmpeg \
@@ -83,11 +84,27 @@ pkg install -y \
     openssl \
     2>/dev/null || true
 
-if command -v node &>/dev/null; then
-    ok "Node.js: $(node --version)"
-else
-    warn "Node.js install may have failed. Try: pkg install nodejs"
+# If nodejs-lts didn't work, fall back to nodejs
+if ! command -v node &>/dev/null; then
+    warn "nodejs-lts install failed. Trying plain nodejs..."
+    pkg install -y nodejs 2>/dev/null || true
 fi
+
+if command -v node &>/dev/null; then
+    NODE_VER=$(node --version)
+    ok "Node.js: $NODE_VER"
+    # Warn if user has Node v22+ (experimental, may break native modules)
+    NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])")
+    if [ "$NODE_MAJOR" -gt 20 ] 2>/dev/null; then
+        warn "Node.js $NODE_VER detected — this is newer than LTS (v20)."
+        warn "If you get errors, downgrade with: pkg install nodejs-lts"
+        warn "Or pin to v20: nvm install 20 && nvm use 20 (if nvm is available)"
+    fi
+else
+    fail "Node.js could not be installed."
+    warn "Try manually: pkg install nodejs-lts"
+fi
+
 if command -v python &>/dev/null; then
     ok "Python: $(python --version 2>&1)"
 fi
@@ -172,13 +189,17 @@ install_npm() {
         if [ "$SKIP_CHROMIUM" = true ]; then
             (cd "$DIR" && PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
                 PUPPETEER_EXECUTABLE_PATH="$CHROMIUM_BIN" \
-                npm install --loglevel=error 2>&1 | tail -3)
+                npm install --loglevel=error 2>&1 | tail -5)
         else
-            (cd "$DIR" && npm install --loglevel=error 2>&1 | tail -3)
+            (cd "$DIR" && npm install --loglevel=error 2>&1 | tail -5)
         fi
-        ok "$NAME: packages installed."
+        if [ $? -eq 0 ]; then
+            ok "$NAME: packages installed."
+        else
+            warn "$NAME: npm install had warnings (may still work)."
+        fi
     else
-        warn "$NAME: No package.json found."
+        warn "$NAME: No package.json found at $DIR"
     fi
 }
 
@@ -186,6 +207,15 @@ install_npm "$SCRIPT_DIR"          "Root (Backend)"
 install_npm "$SCRIPT_DIR/telegram" "Telegram Bot"
 install_npm "$SCRIPT_DIR/discord"  "Discord Bot"
 install_npm "$SCRIPT_DIR/whatsapp" "WhatsApp Bot"
+
+# Verify critical packages exist
+if [ ! -d "$SCRIPT_DIR/node_modules/dotenv" ]; then
+    warn "dotenv missing! Retrying npm install in root..."
+    (cd "$SCRIPT_DIR" && npm install dotenv --loglevel=error 2>&1 | tail -3)
+fi
+if [ -d "$SCRIPT_DIR/node_modules" ]; then
+    ok "node_modules verified."
+fi
 
 # ============================================================
 # STEP 7 — Create Directories
